@@ -1,0 +1,196 @@
+---
+title: Vimium integration
+description: How vimGPT leverages Vimium keyboard navigation for element selection
+---
+
+## What is Vimium?
+
+[Vimium](https://vimium.github.io/) is a Chrome extension that provides keyboard shortcuts for navigation, inspired by Vim. Its most powerful feature for automation is **hint mode**, which overlays every clickable element with a yellow box containing a unique 1-2 character label.
+
+<Frame>
+  <img src="https://github.com/ishan0102/vimGPT/assets/47067154/467be2ac-7e8d-47de-af89-5bb6f51c1c31" alt="Vimium overlays in action" />
+</Frame>
+
+## Why Vimium for AI automation?
+
+Traditional web automation relies on DOM selectors (CSS, XPath) or accessibility trees. vimGPT takes a different approach:
+
+<AccordionGroup>
+  <Accordion title="Vision-first design">
+    GPT-4V analyzes screenshots like a human would, without parsing HTML. Vimium overlays make element selection visual and explicit.
+  </Accordion>
+  
+  <Accordion title="DOM-agnostic">
+    No need to understand page structure, handle shadow DOM, or deal with dynamic class names. The model only needs to read visible labels.
+  </Accordion>
+  
+  <Accordion title="Keyboard-only interaction">
+    Everything is accomplished through keyboard commands, avoiding complex coordinate calculations or element locators.
+  </Accordion>
+  
+  <Accordion title="Human-like interaction">
+    Vimium is designed for humans. By using it, the AI mimics how power users navigate the web.
+  </Accordion>
+</AccordionGroup>
+
+## Loading Vimium in Playwright
+
+The extension must be loaded manually since Playwright doesn't support extensions by default. Here's how vimGPT accomplishes this:
+
+```python vimbot.py
+vimium_path = "./vimium-master"
+
+class Vimbot:
+    def __init__(self, headless=False):
+        self.context = (
+            sync_playwright()
+            .start()
+            .chromium.launch_persistent_context(
+                "",
+                headless=headless,
+                args=[
+                    f"--disable-extensions-except={vimium_path}",
+                    f"--load-extension={vimium_path}",
+                ],
+                ignore_https_errors=True,
+            )
+        )
+```
+
+<Steps>
+  <Step title="Download Vimium source">
+    Run `./setup.sh` to download the Vimium extension locally
+  </Step>
+  
+  <Step title="Use persistent context">
+    Regular browser contexts don't support extensions; use `launch_persistent_context` instead
+  </Step>
+  
+  <Step title="Load extension via CLI args">
+    Pass `--disable-extensions-except` and `--load-extension` flags to Chromium
+  </Step>
+</Steps>
+
+<Warning>
+**Headless limitations**: Chromium extensions don't work in headless mode. Set `headless=False` to see the browser window.
+</Warning>
+
+## Triggering Vimium overlays
+
+Before capturing a screenshot, vimGPT activates Vimium's hint mode:
+
+```python vimbot.py
+def capture(self):
+    # Capture a screenshot with vim bindings on the screen
+    self.page.keyboard.press("Escape")
+    self.page.keyboard.type("f")
+
+    screenshot = Image.open(BytesIO(self.page.screenshot())).convert("RGB")
+    return screenshot
+```
+
+### The keyboard sequence
+
+1. **Press `Escape`**: Exit any existing input mode or focus
+2. **Type `f`**: Activate Vimium's "follow link" hint mode
+3. **Capture screenshot**: Take the screenshot with overlays visible
+
+<Info>
+Vimium displays hints for all clickable elements: links, buttons, form fields, and other interactive elements.
+</Info>
+
+## How GPT-4V uses the overlays
+
+Once the screenshot includes Vimium overlays, GPT-4V can:
+
+1. **Identify clickable elements** by the yellow boxes
+2. **Read the hint characters** (e.g., "AA", "AB", "F", "JK")
+3. **Select the appropriate element** based on the user's objective
+4. **Return the hint characters** in a JSON response
+
+Example prompt excerpt from `vision.py`:
+
+```python vision.py
+"text": f"...if you want to click on an object, return the string with the yellow character sequence you want to click on..."
+```
+
+Example response:
+
+```json
+{"click": "AB"}
+```
+
+## Executing Vimium clicks
+
+Clicking in Vimium is simply typing the hint characters:
+
+```python vimbot.py
+def click(self, text):
+    self.page.keyboard.type(text)
+```
+
+When you type a valid hint sequence with Vimium active, it automatically:
+1. Matches the input to an element
+2. Triggers a click event on that element
+3. Exits hint mode
+
+<Note>
+**No coordinates needed**: Unlike traditional automation that calculates x/y positions, vimGPT just types "AB" and Vimium handles the rest.
+</Note>
+
+## Handling multiple actions
+
+Some tasks require both clicking and typing (e.g., filling a search box):
+
+```python vimbot.py
+def perform_action(self, action):
+    if "done" in action:
+        return True
+    if "click" in action and "type" in action:
+        self.click(action["click"])  # Focus the input field
+        self.type(action["type"])     # Enter text and press Enter
+    elif "navigate" in action:
+        self.navigate(action["navigate"])
+    elif "type" in action:
+        self.type(action["type"])
+    elif "click" in action:
+        self.click(action["click"])
+```
+
+Example JSON from GPT-4V:
+
+```json
+{
+  "click": "F",
+  "type": "machine learning papers"
+}
+```
+
+This clicks the search box (hint "F") and types the query.
+
+## Advantages and limitations
+
+### Advantages
+
+<Check>**Simple and reliable**: No brittle selectors or DOM parsing</Check>
+<Check>**Works on any site**: No need for site-specific logic</Check>
+<Check>**Visual feedback**: Easy to debug by watching what the AI "sees"</Check>
+<Check>**Human-compatible**: Uses a tool designed for humans</Check>
+
+### Limitations
+
+<Warning>**Element occlusion**: Yellow boxes can cover text or important UI elements</Warning>
+<Warning>**Limited resolution**: Small hint characters may be hard for the model to read at low resolutions</Warning>
+<Warning>**Single-character ambiguity**: The model sometimes struggles to distinguish similar characters</Warning>
+<Warning>**No non-clickable elements**: Can't interact with elements that aren't links/buttons</Warning>
+
+## Future enhancements
+
+Potential improvements to the Vimium integration:
+
+- **Custom Vimium fork**: Overlay only relevant elements based on the user's objective (context-aware pruning)
+- **Larger/colored hints**: Make labels more distinguishable for the vision model
+- **Dual screenshots**: Provide frames with and without overlays to prevent occlusion issues
+- **Custom labeling**: Use JavaScript to create custom colored boxes instead of Vimium
+
+See the [GitHub README](https://github.com/ishan0102/vimGPT) for the full list of ideas.

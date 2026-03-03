@@ -1,0 +1,187 @@
+---
+title: Voice mode
+description: Control vimGPT hands-free using voice commands with Whisper speech recognition
+---
+
+Voice mode enables you to control vimGPT using spoken objectives instead of typing. This feature uses Whisper, OpenAI's speech recognition model, to transcribe your voice commands.
+
+## Enabling voice mode
+
+To run vimGPT with voice input:
+
+```bash
+python main.py --voice
+```
+
+The `--voice` flag enables voice input mode (main.py:44-46).
+
+## How it works
+
+When voice mode is enabled:
+
+1. **Initialization**: vimGPT starts the browser and navigates to Google
+2. **Voice capture**: The system listens for your voice command (main.py:17-25)
+3. **Transcription**: Whisper converts your speech to text
+4. **Execution**: vimGPT uses the transcribed text as the objective
+5. **Autonomous browsing**: The agent performs actions until the task is complete
+
+## Voice input workflow
+
+Here's what you'll see when running in voice mode:
+
+```
+Initializing the Vimbot driver...
+Navigating to Google...
+Voice mode enabled. Listening for your command...
+```
+
+At this point, speak your objective clearly into your microphone:
+
+```
+"Search for the best restaurants in New York"
+```
+
+Once captured, you'll see:
+
+```
+Objective received: Search for the best restaurants in New York
+Capturing the screen...
+Getting actions for the given objective...
+```
+
+## Implementation details
+
+Voice mode uses the `whisper-mic` library for audio capture and transcription:
+
+```python
+from whisper_mic import WhisperMic
+
+if voice_mode:
+    print("Voice mode enabled. Listening for your command...")
+    mic = WhisperMic()
+    try:
+        objective = mic.listen()
+    except Exception as e:
+        print(f"Error in capturing voice input: {e}")
+        return  # Exit if voice input fails
+    print(f"Objective received: {objective}")
+```
+
+Reference: main.py:17-25
+
+## Requirements
+
+Voice mode requires the `whisper-mic` package, which is included in the requirements (requirements.txt:20):
+
+```txt
+whisper-mic
+```
+
+Install it with:
+
+```bash
+pip install -r requirements.txt
+```
+
+<Note>
+The `whisper-mic` library handles microphone access and Whisper model integration automatically. You don't need to configure the Whisper model separately.
+</Note>
+
+## Error handling
+
+If voice capture fails, vimGPT will display an error message and exit:
+
+```
+Error in capturing voice input: [error details]
+```
+
+The program gracefully exits instead of continuing with an empty objective (main.py:23-24).
+
+## Tips for voice mode
+
+<Tip>
+**Speak clearly and naturally**: Whisper performs best with clear articulation at a normal speaking pace.
+</Tip>
+
+<Tip>
+**Use a quality microphone**: Built-in laptop microphones work, but a dedicated microphone improves accuracy.
+</Tip>
+
+<Tip>
+**Minimize background noise**: Find a quiet environment for better transcription accuracy.
+</Tip>
+
+<Tip>
+**Be specific**: Just like text mode, specific objectives work better than vague ones.
+</Tip>
+
+## Comparison with text mode
+
+| Feature | Text mode | Voice mode |
+|---------|-----------|------------|
+| Objective input | Type in terminal | Speak into microphone |
+| Command | `python main.py` | `python main.py --voice` |
+| Best for | Quick testing, scripting | Hands-free operation, accessibility |
+| Requirements | None (default) | `whisper-mic` package |
+
+## Example voice commands
+
+Here are some example voice commands to try:
+
+- "Search YouTube for GPT-4 tutorials"
+- "Find news articles about climate change"
+- "Navigate to GitHub and search for AI projects"
+- "Look up Italian restaurants near me"
+- "Find the Python documentation"
+
+<Warning>
+Voice mode requires microphone access. Ensure your system permissions allow Python to access your microphone.
+</Warning>
+
+## Accessibility benefits
+
+Voice mode makes vimGPT more accessible by:
+
+- **Enabling hands-free browsing**: Control the browser without typing
+- **Supporting voice-first workflows**: Integrate with voice-based systems
+- **Reducing physical interaction**: Helpful for users with mobility limitations
+
+## Switching between modes
+
+You can easily switch between text and voice modes:
+
+```bash
+# Text mode (default)
+python main.py
+
+# Voice mode
+python main.py --voice
+```
+
+No additional configuration is needed—just add or remove the `--voice` flag.
+
+## Troubleshooting
+
+### Microphone not detected
+
+If your microphone isn't detected:
+
+1. Check system audio settings
+2. Verify microphone permissions for Python
+3. Test the microphone with other applications
+4. Ensure `whisper-mic` is properly installed
+
+### Poor transcription accuracy
+
+- Speak more slowly and clearly
+- Reduce background noise
+- Use a better quality microphone
+- Check microphone positioning and distance
+
+### Voice capture timeout
+
+If the system doesn't capture your voice:
+
+- Check if you need to start speaking immediately
+- Verify the microphone is active and unmuted
+- Look at `whisper-mic` documentation for timeout settings

@@ -1,0 +1,89 @@
+---
+title: Introduction
+description: Browse the web autonomously using GPT-4V and Vimium keyboard navigation
+---
+
+## Welcome to vimGPT
+
+vimGPT is an innovative project that gives multimodal models an interface to autonomously browse the web. It combines OpenAI's GPT-4 with Vision (GPT-4V) and the Vimium Chrome extension to create an AI agent that can navigate websites, click elements, type text, and complete complex browsing tasks using only visual input.
+
+## How it works
+
+The challenge with using vision models for web browsing is determining what to click without providing the browser DOM as text. vimGPT solves this elegantly by leveraging Vimium, a Chrome extension that overlays keyboard shortcuts on clickable elements.
+
+Here's the flow:
+
+<Steps>
+  <Step title="Screenshot capture">
+    The agent captures a screenshot with Vimium's yellow letter overlays visible on all interactive elements
+  </Step>
+  <Step title="Vision analysis">
+    GPT-4V analyzes the screenshot and decides which action to take based on your objective
+  </Step>
+  <Step title="Action execution">
+    The agent performs the action (navigate, type, or click) using Playwright
+  </Step>
+  <Step title="Repeat">
+    The cycle continues until the objective is completed
+  </Step>
+</Steps>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Vision-first browsing" icon="eye">
+    Uses only GPT-4V's vision capabilities to understand and interact with web pages, no DOM parsing required
+  </Card>
+  <Card title="Vimium integration" icon="keyboard">
+    Leverages Vimium's keyboard shortcuts to provide clear, labeled targets for the AI to interact with
+  </Card>
+  <Card title="Voice mode" icon="microphone">
+    Speak your browsing objectives naturally and watch vimGPT execute them in real-time
+  </Card>
+  <Card title="Autonomous navigation" icon="robot">
+    Handles complex multi-step tasks like searching, clicking through results, and filling forms
+  </Card>
+</CardGroup>
+
+## Use cases
+
+- **Research automation**: Search for information across multiple websites and aggregate results
+- **Form filling**: Automate repetitive data entry tasks on web forms
+- **Content discovery**: Navigate through websites to find specific information
+- **Accessibility**: Voice-controlled browsing for users who prefer or require hands-free interaction
+- **Web testing**: Simulate realistic user browsing patterns for QA purposes
+
+<Note>
+vimGPT is an experimental project that demonstrates the potential of vision-based web automation. It requires an OpenAI API key and uses GPT-4 with Vision, which incurs API costs.
+</Note>
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run your first autonomous browsing task in minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed setup instructions for Python, Vimium, and API configuration
+  </Card>
+</CardGroup>
+
+## Architecture overview
+
+vimGPT consists of three main components:
+
+- **main.py**: Entry point that initializes the Vimbot, accepts user objectives (text or voice), and orchestrates the browsing loop
+- **vimbot.py**: Playwright-based browser controller that manages page navigation, screenshots, and action execution
+- **vision.py**: OpenAI GPT-4V integration that analyzes screenshots and returns action commands in JSON format
+
+## Recognition
+
+vimGPT has been featured in:
+
+- [HackerNews discussion](https://news.ycombinator.com/item?id=38200308)
+- [VisualWebArena research paper](https://arxiv.org/abs/2401.13649) (page 9)
+- [WIRED Magazine](https://www.wired.com/story/fast-forward-tested-next-gen-ai-assistant/)
+
+## Next steps
+
+Ready to start? Check out the [quickstart guide](/quickstart) to run your first autonomous browsing task, or dive into the [installation guide](/installation) for detailed setup instructions.

@@ -1,0 +1,187 @@
+---
+title: How it works
+description: Learn about vimGPT's architecture and the autonomous web browsing workflow
+---
+
+## Overview
+
+vimGPT uses GPT-4V's vision capabilities to autonomously browse the web by analyzing screenshots and executing keyboard-based actions. The system operates in a continuous loop: capture → analyze → act → repeat.
+
+## Architecture
+
+The system consists of three core components:
+
+<CardGroup cols={3}>
+  <Card title="Vimbot" icon="browser">
+    Browser automation layer using Playwright with Vimium extension
+  </Card>
+  <Card title="Vision API" icon="eye">
+    GPT-4V integration for screenshot analysis and decision making
+  </Card>
+  <Card title="Main Loop" icon="rotate">
+    Orchestration layer that coordinates the capture-analyze-act cycle
+  </Card>
+</CardGroup>
+
+## Core workflow
+
+The main execution loop in `main.py` coordinates the entire workflow:
+
+```python main.py
+while True:
+    time.sleep(1)
+    print("Capturing the screen...")
+    screenshot = driver.capture()
+
+    print("Getting actions for the given objective...")
+    action = vision.get_actions(screenshot, objective)
+    print(f"JSON Response: {action}")
+    if driver.perform_action(action):  # returns True if done
+        break
+```
+
+### Step-by-step process
+
+<Steps>
+  <Step title="Initialize browser">
+    Launch a Chromium instance with the Vimium extension loaded using Playwright
+  </Step>
+  
+  <Step title="Capture screenshot">
+    Trigger Vimium overlays by pressing `Escape` then `f`, then capture the screen with visible element hints
+  </Step>
+  
+  <Step title="Analyze with GPT-4V">
+    Send the screenshot and user objective to GPT-4V, which returns a JSON action object
+  </Step>
+  
+  <Step title="Execute action">
+    Parse the JSON response and perform the action (navigate, type, click, or done)
+  </Step>
+  
+  <Step title="Repeat or complete">
+    Continue the loop until GPT-4V returns a "done" signal indicating the objective is complete
+  </Step>
+</Steps>
+
+## Browser automation
+
+The `Vimbot` class wraps Playwright to provide a simple interface for web automation:
+
+```python vimbot.py
+class Vimbot:
+    def __init__(self, headless=False):
+        self.context = (
+            sync_playwright()
+            .start()
+            .chromium.launch_persistent_context(
+                "",
+                headless=headless,
+                args=[
+                    f"--disable-extensions-except={vimium_path}",
+                    f"--load-extension={vimium_path}",
+                ],
+                ignore_https_errors=True,
+            )
+        )
+        self.page = self.context.new_page()
+        self.page.set_viewport_size({"width": 1080, "height": 720})
+```
+
+Key features:
+- **Persistent context**: Maintains session state across page loads
+- **Vimium integration**: Extension loaded via command-line arguments
+- **Fixed viewport**: 1080×720 resolution for consistent screenshots
+- **HTTPS flexibility**: Ignores certificate errors for broader compatibility
+
+## Action execution
+
+The system supports four action types, all executed through keyboard commands:
+
+<AccordionGroup>
+  <Accordion title="Navigate">
+    Load a new URL in the browser
+    ```python
+    def navigate(self, url):
+        self.page.goto(url=url if "://" in url else "https://" + url, timeout=60000)
+    ```
+  </Accordion>
+  
+  <Accordion title="Type">
+    Enter text and press Enter (for search boxes, forms, etc.)
+    ```python
+    def type(self, text):
+        time.sleep(1)
+        self.page.keyboard.type(text)
+        self.page.keyboard.press("Enter")
+    ```
+  </Accordion>
+  
+  <Accordion title="Click">
+    Simulate clicking by typing Vimium hint characters
+    ```python
+    def click(self, text):
+        self.page.keyboard.type(text)
+    ```
+  </Accordion>
+  
+  <Accordion title="Done">
+    Signal completion when the objective is achieved
+    ```python
+    if "done" in action:
+        return True
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Input modes
+
+vimGPT supports two input methods for specifying objectives:
+
+### Text mode (default)
+
+```python main.py
+objective = input("Please enter your objective: ")
+```
+
+### Voice mode
+
+Enable with the `--voice` flag to use Whisper for speech-to-text:
+
+```python main.py
+if voice_mode:
+    print("Voice mode enabled. Listening for your command...")
+    mic = WhisperMic()
+    try:
+        objective = mic.listen()
+    except Exception as e:
+        print(f"Error in capturing voice input: {e}")
+        return
+    print(f"Objective received: {objective}")
+```
+
+## Design decisions
+
+<Note>
+**Why vision-only?** vimGPT deliberately avoids parsing the DOM or accessibility tree, relying solely on what GPT-4V can "see" in screenshots. This tests the limits of visual reasoning for web automation.
+</Note>
+
+<Note>
+**Why Vimium?** Without access to the DOM, the model needs a way to specify which element to click. Vimium's overlay provides visible, alphanumeric labels that GPT-4V can easily identify and reference.
+</Note>
+
+## Performance characteristics
+
+- **Latency**: Each action requires a GPT-4V API call (~2-5 seconds)
+- **Token usage**: Screenshots consume significant tokens; resolution is capped at 1080px width
+- **Reliability**: JSON parsing errors trigger a fallback LLM call to repair malformed responses
+- **Viewport**: Fixed 1080×720 resolution balances visual clarity with token efficiency
+
+## Limitations and future improvements
+
+See the [GitHub README](https://github.com/ishan0102/vimGPT) for a comprehensive list of known limitations and potential enhancements, including:
+
+- Higher resolution support for better element detection
+- Cycle detection to avoid repeated actions
+- Fine-tuning open-source vision models for faster/cheaper inference
+- Integration with Chrome accessibility tree for additional context

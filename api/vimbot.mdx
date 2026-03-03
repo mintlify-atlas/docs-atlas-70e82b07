@@ -1,0 +1,190 @@
+---
+title: Vimbot
+description: The main Vimbot class for autonomous web browsing using Playwright and Vimium
+---
+
+## Overview
+
+The `Vimbot` class provides a high-level interface for autonomous web browsing using Playwright with the Vimium extension. It handles browser initialization, navigation, keyboard interactions, and screenshot capture for vision-based automation.
+
+## Class: Vimbot
+
+### Constructor
+
+```python
+Vimbot(headless=False)
+```
+
+Initializes a new Vimbot instance with a Chromium browser context.
+
+<ParamField path="headless" type="bool" default="False">
+  Whether to run the browser in headless mode. Set to `True` for running without a visible browser window.
+</ParamField>
+
+**Behavior:**
+- Launches a persistent Chromium context with the Vimium extension loaded from `./vimium-master`
+- Creates a new page with viewport size of 1080x720
+- Ignores HTTPS errors for flexibility in browsing
+
+**Example:**
+
+```python
+from vimbot import Vimbot
+
+# Initialize with visible browser
+driver = Vimbot()
+
+# Initialize in headless mode
+driver = Vimbot(headless=True)
+```
+
+### Methods
+
+#### navigate()
+
+```python
+navigate(url: str) -> None
+```
+
+Navigates to the specified URL.
+
+<ParamField path="url" type="str" required>
+  The URL to navigate to. If the URL doesn't contain `://`, it will automatically prepend `https://`.
+</ParamField>
+
+**Example:**
+
+```python
+driver = Vimbot()
+driver.navigate("https://www.google.com")
+driver.navigate("github.com")  # Automatically becomes https://github.com
+```
+
+#### type()
+
+```python
+type(text: str) -> None
+```
+
+Types the specified text and presses Enter.
+
+<ParamField path="text" type="str" required>
+  The text to type into the active input field.
+</ParamField>
+
+**Behavior:**
+- Waits 1 second before typing
+- Types the text character by character
+- Automatically presses Enter after typing
+
+**Example:**
+
+```python
+driver = Vimbot()
+driver.navigate("https://www.google.com")
+driver.click("a")  # Click on search box using Vimium hint
+driver.type("autonomous web browsing")
+```
+
+#### click()
+
+```python
+click(text: str) -> None
+```
+
+Simulates clicking on an element using Vimium keyboard shortcuts.
+
+<ParamField path="text" type="str" required>
+  The Vimium hint characters (1-2 letter sequence from yellow boxes) to click on.
+</ParamField>
+
+**Example:**
+
+```python
+driver = Vimbot()
+driver.navigate("https://www.google.com")
+driver.click("ab")  # Clicks element with Vimium hint "ab"
+```
+
+#### capture()
+
+```python
+capture() -> PIL.Image.Image
+```
+
+Captures a screenshot with Vimium hints visible on the screen.
+
+<ResponseField name="screenshot" type="PIL.Image.Image">
+  A PIL Image object in RGB format containing the screenshot with Vimium hints displayed.
+</ResponseField>
+
+**Behavior:**
+- Presses Escape to ensure clean state
+- Types "f" to activate Vimium's hint mode (shows yellow boxes with letter sequences)
+- Takes and returns a screenshot as a PIL Image
+
+**Example:**
+
+```python
+driver = Vimbot()
+driver.navigate("https://www.google.com")
+screenshot = driver.capture()
+screenshot.save("page_with_hints.png")
+```
+
+#### perform_action()
+
+```python
+perform_action(action: dict) -> bool
+```
+
+Executes an action based on the provided action dictionary.
+
+<ParamField path="action" type="dict" required>
+  A dictionary containing action keys and values. See [Actions](/api/actions) for detailed format.
+</ParamField>
+
+<ResponseField name="done" type="bool">
+  Returns `True` if the action contains a "done" key, indicating task completion. Otherwise returns `None`.
+</ResponseField>
+
+**Supported action combinations:**
+- `{"done": True}` - Signals completion
+- `{"navigate": "url"}` - Navigates to URL
+- `{"type": "text"}` - Types text
+- `{"click": "ab"}` - Clicks element
+- `{"click": "ab", "type": "text"}` - Clicks element then types text
+
+**Example:**
+
+```python
+import vision
+from vimbot import Vimbot
+
+driver = Vimbot()
+driver.navigate("https://www.google.com")
+
+while True:
+    screenshot = driver.capture()
+    action = vision.get_actions(screenshot, "search for Python tutorials")
+    if driver.perform_action(action):
+        break  # Task completed
+```
+
+## Configuration
+
+### Vimium path
+
+The Vimbot class expects the Vimium extension to be located at `./vimium-master` relative to the working directory. Ensure you have downloaded and extracted the Vimium extension to this location.
+
+```python
+vimium_path = "./vimium-master"
+```
+
+## Browser settings
+
+- **Viewport size:** 1080x720 pixels
+- **Browser:** Chromium (via Playwright)
+- **Extensions:** Vimium for keyboard navigation
+- **HTTPS errors:** Ignored for flexibility
+- **Timeout:** 60 seconds for navigation

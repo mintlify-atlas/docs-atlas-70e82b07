@@ -1,0 +1,264 @@
+---
+title: Architecture
+description: System design and technical implementation details of vimGPT
+---
+
+## Overview
+
+vimGPT is an autonomous web browsing agent that uses GPT-4V's vision capabilities combined with Vimium keyboard navigation to interact with web pages. The system follows a continuous loop of capturing, analyzing, and acting on web content without relying on DOM parsing.
+
+## System flow
+
+The core architecture follows this execution loop:
+
+```
+Playwright → Vimium → Screenshot → GPT-4V → Action → Repeat
+```
+
+### 1. Browser initialization
+
+The `Vimbot` class (`vimbot.py:10`) initializes a Playwright browser context with the Vimium extension pre-loaded:
+
+```python
+self.context = (
+    sync_playwright()
+    .start()
+    .chromium.launch_persistent_context(
+        "",
+        headless=headless,
+        args=[
+            f"--disable-extensions-except={vimium_path}",
+            f"--load-extension={vimium_path}",
+        ],
+        ignore_https_errors=True,
+    )
+)
+```
+
+The viewport is set to 1080x720 pixels (`vimbot.py:27`) to balance between visual clarity and token usage.
+
+### 2. Screenshot capture with Vimium overlays
+
+The `capture()` method (`vimbot.py:53`) activates Vimium's hint mode to display yellow character sequences over clickable elements:
+
+```python
+def capture(self):
+    self.page.keyboard.press("Escape")
+    self.page.keyboard.type("f")
+    screenshot = Image.open(BytesIO(self.page.screenshot())).convert("RGB")
+    return screenshot
+```
+
+Pressing "f" triggers Vimium's link hint mode, overlaying 1-2 character sequences on interactive elements that can be clicked.
+
+### 3. Vision processing and action extraction
+
+The `vision.py` module handles GPT-4V interaction:
+
+#### Image encoding
+
+Screenshots are resized and encoded (`vision.py:16`):
+
+```python
+def encode_and_resize(image):
+    W, H = image.size
+    image = image.resize((IMG_RES, int(IMG_RES * H / W)))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return encoded_image
+```
+
+The default resolution is 1080 pixels (`vision.py:12`), maintaining aspect ratio to preserve visual context.
+
+#### GPT-4V prompt engineering
+
+The `get_actions()` function (`vision.py:25`) sends the screenshot with a structured prompt:
+
+- **Available actions**: `navigate`, `type`, `click`, `done`
+- **Expected format**: JSON object with action keys
+- **Click instructions**: Return only the 1-2 letter yellow sequence from Vimium
+- **Type instructions**: Return both `click` and `type` for text input scenarios
+- **Completion signal**: Return `{"done": true}` when objective is achieved
+
+The model is currently set to `gpt-4o` (`vision.py:28`) with a 100 token limit (`vision.py:46`).
+
+### 4. JSON response parsing and error handling
+
+The response parsing includes a two-tier error recovery system (`vision.py:49`):
+
+```python
+try:
+    json_response = json.loads(response.choices[0].message.content)
+except json.JSONDecodeError:
+    print("Error: Invalid JSON response")
+    cleaned_response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[{
+            "role": "system",
+            "content": "You are a helpful assistant to fix an invalid JSON response..."
+        }]
+    )
+```
+
+**Error handling strategy**:
+
+1. **First attempt**: Parse the raw GPT-4V response
+2. **Fallback**: If JSON is malformed, make a second API call to GPT-4o to clean the response
+3. **Final fallback**: Return empty dict `{}` if both attempts fail
+
+This approach handles cases where GPT-4V returns valid instructions but wraps them in markdown code blocks or adds explanatory text.
+
+### 5. Action execution
+
+The `perform_action()` method (`vimbot.py:29`) dispatches actions:
+
+```python
+def perform_action(self, action):
+    if "done" in action:
+        return True
+    if "click" in action and "type" in action:
+        self.click(action["click"])
+        self.type(action["type"])
+    if "navigate" in action:
+        self.navigate(action["navigate"])
+    elif "type" in action:
+        self.type(action["type"])
+    elif "click" in action:
+        self.click(action["click"])
+```
+
+**Action implementations**:
+
+- **navigate** (`vimbot.py:42`): Loads URL with automatic https:// prefix
+- **type** (`vimbot.py:45`): Types text and presses Enter after 1 second delay
+- **click** (`vimbot.py:50`): Simulates typing the Vimium hint sequence
+- **done**: Returns True to break the execution loop
+
+### 6. Main execution loop
+
+The orchestration happens in `main.py:29`:
+
+```python
+while True:
+    time.sleep(1)
+    print("Capturing the screen...")
+    screenshot = driver.capture()
+    
+    print("Getting actions for the given objective...")
+    action = vision.get_actions(screenshot, objective)
+    print(f"JSON Response: {action}")
+    if driver.perform_action(action):
+        break
+```
+
+This creates a continuous feedback loop where each action updates the page state, triggering a new screenshot and analysis cycle.
+
+## Tech stack
+
+### Core dependencies
+
+- **Playwright** (`1.39.0`): Browser automation and screenshot capture
+- **OpenAI Python SDK** (`1.1.2`): GPT-4V API integration
+- **Pillow** (`10.1.0`): Image processing and encoding
+- **python-dotenv** (`1.0.0`): Environment variable management for API keys
+- **whisper-mic**: Voice input processing for voice mode
+
+### Browser extension
+
+- **Vimium**: Keyboard-driven browser navigation that overlays hint markers on clickable elements
+
+### Development tools
+
+The project uses pre-commit hooks (`.pre-commit-config.yaml:1`) for code quality:
+
+- **trailing-whitespace**: Removes trailing whitespace
+- **end-of-file-fixer**: Ensures files end with newline
+- **ssort** (`v0.11.6`): Statement sorting for Python
+- **isort** (`5.12.0`): Import sorting with Black profile
+- **black** (`23.3.0`): Code formatting with 120 character line length
+
+## Voice mode
+
+Voice mode (`main.py:17`) uses the `whisper-mic` library to convert speech to text:
+
+```python
+if voice_mode:
+    print("Voice mode enabled. Listening for your command...")
+    mic = WhisperMic()
+    try:
+        objective = mic.listen()
+    except Exception as e:
+        print(f"Error in capturing voice input: {e}")
+        return
+```
+
+This enables hands-free interaction by speaking the objective instead of typing it.
+
+## Design philosophy
+
+### Vision-only approach
+
+vimGPT deliberately avoids using DOM parsing or accessibility trees, relying solely on visual understanding. This approach:
+
+- Tests the limits of multimodal model vision capabilities
+- Simplifies the architecture by eliminating HTML parsing
+- More closely mimics human web browsing behavior
+- Remains functional even on dynamically rendered content
+
+### Vimium as the interface layer
+
+Vimium solves the "what to click" problem by providing:
+
+- **Visual markers**: Yellow boxes with character sequences
+- **Unambiguous targets**: Each element gets a unique identifier
+- **Keyboard-driven interaction**: No need for pixel coordinate calculations
+- **Extensibility**: Works across all web pages without modification
+
+## Extension points
+
+The architecture supports several enhancement opportunities:
+
+### Model switching
+
+The vision model can be swapped by changing `vision.py:28`. Potential alternatives:
+- Other OpenAI vision models
+- Self-hosted models like LLaVa or CogVLM
+- Models with native pixel coordinate output
+
+### Resolution tuning
+
+Adjust `IMG_RES` in `vision.py:12` to balance:
+- **Higher resolution**: Better element detection, more tokens consumed
+- **Lower resolution**: Faster processing, potential detection failures
+
+### Browser configuration
+
+Modify Playwright launch parameters in `vimbot.py:15` for:
+- Headless mode for server deployment
+- Custom user agent strings
+- Cookie/session persistence
+- Different viewport sizes
+
+## Performance considerations
+
+### Token usage
+
+Each iteration consumes:
+- Screenshot encoding (varies by resolution)
+- Prompt text (~200 tokens)
+- Response generation (capped at 100 tokens)
+
+### Latency
+
+Typical iteration timing:
+- Screenshot capture: less than 500ms
+- API call to GPT-4V: 2-5 seconds
+- Action execution: less than 1 second
+- **Total**: approximately 3-7 seconds per action
+
+### Cost
+
+GPT-4V pricing is based on image tokens plus text tokens. At 1080px resolution, expect:
+- ~$0.01-0.03 per iteration
+- Costs scale with task complexity (number of steps)

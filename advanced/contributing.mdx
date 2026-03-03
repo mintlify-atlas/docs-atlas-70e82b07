@@ -1,0 +1,442 @@
+---
+title: Contributing
+description: How to contribute to the vimGPT project
+---
+
+## Getting started
+
+vimGPT is an open-source project that welcomes contributions from the community. Whether you're fixing bugs, adding features, or improving documentation, your help is appreciated.
+
+### Repository
+
+The project is hosted on GitHub: [github.com/ishan0102/vimGPT](https://github.com/ishan0102/vimGPT)
+
+### Prerequisites
+
+Before contributing, ensure you have:
+
+- Python 3.8 or higher
+- Git installed
+- OpenAI API key for testing
+- Familiarity with Playwright and OpenAI APIs (helpful but not required)
+
+## Development setup
+
+### 1. Fork and clone
+
+```bash
+git clone https://github.com/YOUR_USERNAME/vimGPT.git
+cd vimGPT
+```
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+playwright install chromium
+```
+
+### 3. Download Vimium extension
+
+```bash
+./setup.sh
+```
+
+This downloads the Vimium Chrome extension required for keyboard navigation overlays.
+
+### 4. Configure environment
+
+Create a `.env` file with your API key:
+
+```bash
+OPENAI_API_KEY=sk-...
+```
+
+### 5. Install pre-commit hooks
+
+The project uses pre-commit hooks to maintain code quality:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+This automatically runs the following checks before each commit:
+
+- **trailing-whitespace**: Removes trailing whitespace
+- **end-of-file-fixer**: Ensures files end with a newline
+- **ssort**: Sorts Python statements
+- **isort**: Sorts imports with Black profile
+- **black**: Formats code with 120 character line length
+
+Configuration is defined in `.pre-commit-config.yaml`.
+
+### 6. Test the installation
+
+```bash
+python main.py
+```
+
+Enter a simple objective like "Search for Python tutorials" to verify everything works.
+
+## Code style
+
+vimGPT follows strict formatting guidelines enforced by pre-commit hooks:
+
+### Formatting standards
+
+- **Line length**: 120 characters (Black configuration)
+- **Import sorting**: isort with Black profile
+- **Statement sorting**: ssort for consistent Python statement order
+- **Whitespace**: No trailing whitespace, files end with newline
+
+### Running formatters manually
+
+```bash
+# Format all files
+black . --line-length 120
+isort . --profile black
+ssort .
+
+# Run all pre-commit hooks
+pre-commit run --all-files
+```
+
+### Code organization
+
+The codebase follows a simple structure:
+
+- `main.py`: Entry point and orchestration loop
+- `vimbot.py`: Browser automation with Playwright
+- `vision.py`: GPT-4V integration and image processing
+- `setup.sh`: Vimium extension download script
+
+## Making changes
+
+### 1. Create a feature branch
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+Use descriptive branch names:
+- `feature/add-json-mode` for new features
+- `fix/screenshot-resolution` for bug fixes
+- `docs/update-readme` for documentation
+
+### 2. Make your changes
+
+Edit the relevant files. Common areas for contribution:
+
+#### Vision model improvements (`vision.py`)
+
+- Enhance prompt engineering for better action extraction
+- Add support for new action types
+- Implement better error handling
+- Optimize image resolution and encoding
+
+#### Browser automation (`vimbot.py`)
+
+- Add new action types (scroll, hover, etc.)
+- Improve element clicking reliability
+- Add screenshot annotation features
+
+#### Orchestration (`main.py`)
+
+- Add cycle detection to prevent infinite loops
+- Implement task completion validation
+- Add logging and telemetry
+
+### 3. Test your changes
+
+Run the script with various objectives:
+
+```bash
+# Test basic search
+python main.py  # Objective: "Find Python documentation"
+
+# Test voice mode (if applicable)
+python main.py --voice
+```
+
+Create test cases for edge scenarios:
+- Pages with slow loading times
+- Sites with complex JavaScript interactions
+- Pages with overlapping Vimium hints
+
+### 4. Commit your changes
+
+Pre-commit hooks will automatically format your code:
+
+```bash
+git add .
+git commit -m "Add feature: detailed description"
+```
+
+If pre-commit hooks fail:
+1. Review the errors
+2. Fix the issues (often auto-fixed)
+3. Stage the fixes: `git add .`
+4. Commit again
+
+### 5. Push and create a pull request
+
+```bash
+git push origin feature/your-feature-name
+```
+
+Open a PR on GitHub with:
+- Clear description of changes
+- Motivation and context
+- Testing steps performed
+- Screenshots (if UI-related)
+
+## Contribution ideas
+
+The project maintainer has outlined several enhancement opportunities in the README. Here are the current areas for improvement:
+
+### High priority
+
+<CardGroup cols={2}>
+  <Card title="JSON mode support" icon="brackets-curly">
+    Once OpenAI supports JSON mode for Vision API, update `vision.py` to use structured outputs instead of prompt-based JSON extraction.
+  </Card>
+  
+  <Card title="Cycle detection" icon="arrows-spin">
+    Build a graph-based retry mechanism to prevent infinite loops when the bot repeatedly clicks the same element.
+  </Card>
+  
+  <Card title="Higher resolution images" icon="image">
+    Experiment with higher resolution screenshots to improve element detection. Balance token usage vs accuracy.
+  </Card>
+  
+  <Card title="Assistant API integration" icon="messages">
+    Use the Assistant API for automatic context retrieval and conversation history once it supports Vision.
+  </Card>
+</CardGroup>
+
+### Medium priority
+
+<Accordion title="Vimium fork for selective overlays">
+  Create a specialized Vimium version that overlays elements based on the user query context, effectively pruning irrelevant elements.
+  
+  **Implementation notes**:
+  - Fork the Vimium repository
+  - Add context-aware filtering logic
+  - Test different sized boxes and colors
+  - Integrate with vimGPT's objective system
+</Accordion>
+
+<Accordion title="Fine-tune open-source vision models">
+  Train models like LLaVa, CogVLM, or Fuyu-8B specifically for web navigation tasks.
+  
+  **Benefits**:
+  - Faster inference (local deployment)
+  - Lower costs (no API fees)
+  - CogVLM can specify pixel coordinates directly
+  
+  **Requirements**:
+  - Dataset of web navigation tasks
+  - GPU resources for training
+  - Evaluation metrics for accuracy
+</Accordion>
+
+<Accordion title="Dual-frame input (with/without Vimium)">
+  Provide screenshots both with and without Vimium overlays to prevent the yellow boxes from obscuring page content.
+  
+  **Implementation**:
+  - Capture two screenshots per iteration
+  - Send both to GPT-4V in a single request
+  - Update prompt to explain the dual-view approach
+  
+  **Trade-off**: Doubles token usage per request
+</Accordion>
+
+<Accordion title="Accessibility tree integration">
+  Pass Chrome's accessibility tree as additional input alongside the screenshot.
+  
+  **Benefits**:
+  - Provides structured layout information
+  - Maps interactive elements to Vimium bindings
+  - Improves reliability for complex UIs
+  
+  **Implementation reference**: See Playwright's accessibility testing features
+</Accordion>
+
+### Advanced features
+
+<Accordion title="Visual question answering">
+  Enable the bot to read and extract information from pages, not just navigate them.
+  
+  **Use cases**:
+  - Summarize news articles
+  - Reply to emails based on context
+  - Answer questions about page content
+  - Extract structured data from web pages
+  
+  **Implementation**:
+  - Add new action type: `extract` or `answer`
+  - Return information to the user instead of performing actions
+  - Chain multiple GPT-4V calls for complex tasks
+</Accordion>
+
+<Accordion title="Browser session persistence">
+  Make vimGPT work with your actual browser instead of a headless instance.
+  
+  **Benefits**:
+  - Use saved cookies and sessions
+  - Access authenticated pages
+  - Interact with payment forms ("order food with my credit card")
+  
+  **Challenges**:
+  - Security concerns with automation on real accounts
+  - Browser extension limitations in Playwright
+  - Need for user confirmation on sensitive actions
+</Accordion>
+
+<Accordion title="Accessibility features for blind users">
+  Enhance voice mode to create an "agent" interface for page navigation.
+  
+  **Features**:
+  - Full voice control (input and output)
+  - Natural language conversations about page content
+  - Assistant API integration for multi-turn dialogues
+  - Screen reader integration
+  
+  **Impact**: Makes web browsing more accessible for visually impaired users
+</Accordion>
+
+<Accordion title="JavaScript-based DOM labeling">
+  Replace Vimium with custom JavaScript that labels DOM elements with colored boxes.
+  
+  **Inspiration**: [Similar approach by DivGarg](https://x.com/DivGarg9/status/1659270501498523648?s=20)
+  
+  **Advantages**:
+  - More control over visual markers
+  - Context-aware element highlighting
+  - Better integration with page structure
+  
+  **Implementation**: Inject custom JavaScript via Playwright
+</Accordion>
+
+## Testing guidelines
+
+### Manual testing
+
+Test your changes with diverse scenarios:
+
+1. **Simple tasks**: Google search, Wikipedia lookup
+2. **Multi-step workflows**: Search → Click result → Find specific section
+3. **Complex UIs**: Sites with dropdowns, modals, dynamic content
+4. **Edge cases**: Slow networks, timeout scenarios, malformed pages
+
+### Adding automated tests
+
+While the project currently lacks a test suite, contributors can add:
+
+```python
+# tests/test_vision.py
+import pytest
+from vision import encode_and_resize
+from PIL import Image
+
+def test_image_encoding():
+    img = Image.new('RGB', (1920, 1080), color='red')
+    encoded = encode_and_resize(img)
+    assert isinstance(encoded, str)
+    assert len(encoded) > 0
+```
+
+Run tests with:
+
+```bash
+pytest tests/
+```
+
+## Documentation
+
+Improvements to documentation are highly valued:
+
+- Update README.md with new features
+- Add code comments for complex logic
+- Create examples for common use cases
+- Improve error messages
+- Add type hints to function signatures
+
+## Pull request guidelines
+
+### Before submitting
+
+- [ ] Code passes all pre-commit hooks
+- [ ] Changes are tested manually
+- [ ] Documentation is updated (if applicable)
+- [ ] Commit messages are descriptive
+- [ ] No unnecessary files are committed (screenshots, `.env`, etc.)
+
+### PR description template
+
+```markdown
+## Description
+Brief summary of changes
+
+## Motivation
+Why this change is needed
+
+## Changes
+- List of specific modifications
+- Include file names and line numbers if helpful
+
+## Testing
+- Steps to test the changes
+- Example objectives that demonstrate the feature
+
+## Screenshots (if applicable)
+Before/after comparisons or feature demonstrations
+
+## Checklist
+- [ ] Pre-commit hooks pass
+- [ ] Tested manually
+- [ ] Documentation updated
+```
+
+## Code review process
+
+1. Maintainers will review your PR
+2. Feedback may be provided for improvements
+3. Make requested changes and push updates
+4. Once approved, your PR will be merged
+
+## Community
+
+### Discussions and support
+
+- **GitHub Issues**: Bug reports and feature requests
+- **HackerNews thread**: [Discussion on vimGPT](https://news.ycombinator.com/item?id=38200308)
+- **Pull Requests**: Code contributions and reviews
+
+### Recognition
+
+The project has been featured in:
+
+- **WIRED**: [AI Assistant Testing Article](https://www.wired.com/story/fast-forward-tested-next-gen-ai-assistant/)
+- **VisualWebArena Research Paper**: [Evaluating Multimodal Agents](https://arxiv.org/abs/2401.13649) (page 9)
+- **HackerNews**: Front page discussion with community feedback
+
+### Related projects
+
+- [globe-engineer/globot](https://github.com/Globe-Engineer/globot): Similar browser automation
+- [nat/natbot](https://github.com/nat/natbot): Natural language browser control
+
+## License
+
+By contributing to vimGPT, you agree that your contributions will be licensed under the same license as the project.
+
+## Questions?
+
+If you're unsure about anything:
+
+1. Check existing issues and PRs for similar discussions
+2. Open a GitHub issue with the "question" label
+3. Review the source code and comments for implementation details
+
+Thank you for contributing to vimGPT!

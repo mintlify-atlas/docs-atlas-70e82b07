@@ -1,0 +1,173 @@
+---
+title: Vision
+description: Vision module functions for GPT-4V-powered action determination
+---
+
+## Overview
+
+The vision module uses OpenAI's GPT-4V (GPT-4 with vision) to analyze screenshots and determine the next action to take based on a given objective. It handles image encoding, API communication, and response parsing.
+
+## Configuration
+
+### Environment variables
+
+The vision module requires an OpenAI API key to be set:
+
+```bash
+OPENAI_API_KEY=your_api_key_here
+```
+
+### Image resolution
+
+```python
+IMG_RES = 1080
+```
+
+Screenshots are resized to 1080 pixels width while maintaining aspect ratio before being sent to the GPT-4V API.
+
+## Functions
+
+### get_actions()
+
+```python
+get_actions(screenshot: PIL.Image.Image, objective: str) -> dict
+```
+
+Analyzes a screenshot and determines the next action to take based on the objective.
+
+<ParamField path="screenshot" type="PIL.Image.Image" required>
+  A PIL Image object containing the screenshot with Vimium hints visible. Typically obtained from `Vimbot.capture()`.
+</ParamField>
+
+<ParamField path="objective" type="str" required>
+  A natural language description of the task to accomplish (e.g., "search for Python tutorials", "upvote the pinterest post").
+</ParamField>
+
+<ResponseField name="action" type="dict">
+  A dictionary containing the action to perform. See [Actions](/api/actions) for the complete format specification. Returns an empty dictionary `{}` if JSON parsing fails twice.
+</ResponseField>
+
+**Behavior:**
+- Encodes and resizes the screenshot using `encode_and_resize()`
+- Sends the screenshot and objective to GPT-4V (model: `gpt-4o`)
+- Parses the JSON response to extract the action
+- If JSON parsing fails, attempts to fix the response using a second GPT-4 call
+- Returns an empty dict if both parsing attempts fail
+
+**Example:**
+
+```python
+import vision
+from vimbot import Vimbot
+
+driver = Vimbot()
+driver.navigate("https://www.google.com")
+
+screenshot = driver.capture()
+action = vision.get_actions(screenshot, "search for autonomous agents")
+print(action)  # {"click": "a", "type": "autonomous agents"}
+
+driver.perform_action(action)
+```
+
+**GPT-4V prompt behavior:**
+
+The function instructs GPT-4V to:
+- Choose between `navigate`, `type`, `click`, and `done` actions
+- For clicks: Return only the 1-2 letter sequence from yellow Vimium hint boxes
+- For typing: Return both a click (to focus the input) and type (with the message)
+- Return `done` when the objective is satisfied
+- Respond only in JSON format without code blocks
+
+**Error handling:**
+
+```python
+# If initial JSON parsing fails
+try:
+    json_response = json.loads(response.choices[0].message.content)
+except json.JSONDecodeError:
+    # Attempts to fix invalid JSON using a second GPT-4 call
+    # Returns {} if fixing also fails
+```
+
+### encode_and_resize()
+
+```python
+encode_and_resize(image: PIL.Image.Image) -> str
+```
+
+Resizes an image and encodes it to a base64 string for API transmission.
+
+<ParamField path="image" type="PIL.Image.Image" required>
+  A PIL Image object to encode and resize.
+</ParamField>
+
+<ResponseField name="encoded_image" type="str">
+  A base64-encoded PNG image string, resized to 1080 pixels width while maintaining aspect ratio.
+</ResponseField>
+
+**Behavior:**
+- Calculates aspect ratio from original image dimensions
+- Resizes to 1080 pixels width (maintains aspect ratio)
+- Converts to PNG format
+- Encodes to base64 string
+
+**Example:**
+
+```python
+from PIL import Image
+import vision
+
+image = Image.open("screenshot.png")
+encoded = vision.encode_and_resize(image)
+print(encoded[:50])  # iVBORw0KGgoAAAANSUhEUgAABDgAAAH0CAYAAAD...
+```
+
+**Implementation details:**
+
+```python
+W, H = image.size
+image = image.resize((IMG_RES, int(IMG_RES * H / W)))
+buffer = BytesIO()
+image.save(buffer, format="PNG")
+encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+```
+
+## API configuration
+
+### Model
+
+The vision module uses OpenAI's `gpt-4o` model for vision analysis.
+
+### Token limits
+
+```python
+max_tokens=100
+```
+
+Responses are limited to 100 tokens, which is sufficient for JSON action responses.
+
+## Usage pattern
+
+Typical workflow for vision-guided automation:
+
+```python
+import time
+import vision
+from vimbot import Vimbot
+
+driver = Vimbot()
+driver.navigate("https://www.google.com")
+
+objective = "search for GPT-4 vision capabilities and open the first result"
+
+while True:
+    time.sleep(1)
+    screenshot = driver.capture()
+    action = vision.get_actions(screenshot, objective)
+    print(f"Action: {action}")
+    
+    if driver.perform_action(action):
+        print("Objective completed!")
+        break
+```

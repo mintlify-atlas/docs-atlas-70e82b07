@@ -1,0 +1,145 @@
+---
+title: Basic usage
+description: Learn how to run vimGPT with text-based objectives to browse the web autonomously
+---
+
+vimGPT allows you to control a web browser using natural language objectives. The AI agent uses GPT-4V vision capabilities combined with Vimium keyboard navigation to interact with web pages.
+
+## Running vimGPT
+
+To start vimGPT with a text-based objective:
+
+```bash
+python main.py
+```
+
+When prompted, enter your objective in plain English:
+
+```
+Please enter your objective: Search for Python tutorials on YouTube
+```
+
+## How it works
+
+The vimGPT workflow operates in a continuous loop:
+
+1. **Navigation**: The browser starts at Google (main.py:15)
+2. **Screen capture**: Takes a screenshot with Vimium overlays visible (vimbot.py:53-59)
+3. **AI analysis**: Sends the screenshot to GPT-4V with your objective (vision.py:25-46)
+4. **Action execution**: Performs the AI-suggested action (navigate, type, or click)
+5. **Completion**: Repeats until the AI determines the task is complete
+
+<Note>
+The agent presses `Escape` and then `f` to activate Vimium's link hint mode, which overlays yellow character sequences on clickable elements (vimbot.py:55-56).
+</Note>
+
+## Available actions
+
+vimGPT supports three primary actions:
+
+### Navigate
+
+Navigates to a specified URL:
+
+```json
+{"navigate": "https://youtube.com"}
+```
+
+URLs without a protocol are automatically prefixed with `https://` (vimbot.py:43).
+
+### Type
+
+Types text and presses Enter:
+
+```json
+{"type": "Python tutorials for beginners"}
+```
+
+The agent waits 1 second before typing to ensure the page is ready (vimbot.py:46).
+
+### Click
+
+Clicks on an element using its Vimium hint sequence:
+
+```json
+{"click": "AB"}
+```
+
+The AI identifies clickable elements by their yellow character sequences and selects the most appropriate one.
+
+### Combined actions
+
+For input fields, the agent can click and type in sequence:
+
+```json
+{
+  "click": "F",
+  "type": "machine learning tutorials"
+}
+```
+
+### Task completion
+
+When the objective is satisfied, the AI returns:
+
+```json
+{"done": true}
+```
+
+## Example objectives
+
+Here are some example objectives you can try:
+
+- "Search for Python tutorials on YouTube"
+- "Find the latest news about artificial intelligence"
+- "Go to GitHub and search for machine learning projects"
+- "Find recipes for chocolate chip cookies"
+- "Look up the weather forecast for San Francisco"
+
+## Understanding the output
+
+As vimGPT runs, you'll see console output showing its progress:
+
+```
+Initializing the Vimbot driver...
+Navigating to Google...
+Please enter your objective: Search for Python tutorials
+Capturing the screen...
+Getting actions for the given objective...
+JSON Response: {'click': 'F', 'type': 'Python tutorials'}
+Capturing the screen...
+Getting actions for the given objective...
+JSON Response: {'done': True}
+```
+
+Each iteration shows:
+- The screenshot capture phase (main.py:31-32)
+- The AI's action decision (main.py:35-36)
+- The JSON response indicating what action to perform
+
+## Stopping execution
+
+To stop vimGPT at any time, press `Ctrl+C`:
+
+```
+^C
+Exiting...
+```
+
+The script catches the KeyboardInterrupt and exits gracefully (main.py:54-56).
+
+<Tip>
+Start with simple, specific objectives. The AI performs better when the goal is clear and well-defined.
+</Tip>
+
+## Viewport configuration
+
+The browser viewport is set to 1080x720 pixels by default (vimbot.py:27). This resolution balances token usage with visual clarity for the GPT-4V model.
+
+## Image processing
+
+Screenshots are resized to 1080 pixels wide while maintaining aspect ratio before being sent to the API (vision.py:12, vision.py:18). This helps manage API token costs while preserving enough detail for accurate element detection.
+
+<Warning>
+Each action requires a GPT-4V API call, which can be expensive. Monitor your OpenAI usage to avoid unexpected costs.
+</Warning>

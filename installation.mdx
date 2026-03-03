@@ -1,0 +1,396 @@
+---
+title: Installation
+description: Complete setup guide for Python dependencies, Vimium extension, and OpenAI API configuration
+---
+
+## System requirements
+
+Before installing vimGPT, ensure your system meets these requirements:
+
+- **Operating system**: Linux, macOS, or Windows
+- **Python**: Version 3.8 or higher
+- **Browser**: Chrome/Chromium (automatically installed by Playwright)
+- **API access**: OpenAI API key with GPT-4 with Vision enabled
+- **Optional**: Microphone access for voice mode
+
+## Installation steps
+
+<Steps>
+  <Step title="Clone the repository">
+    First, clone the vimGPT repository:
+    
+    ```bash
+    git clone https://github.com/ishan0102/vimGPT.git
+    cd vimGPT
+    ```
+  </Step>
+  
+  <Step title="Install Python dependencies">
+    Install all required packages using pip:
+    
+    ```bash
+    pip install -r requirements.txt
+    ```
+    
+    This installs the following key dependencies:
+    - `openai==1.1.2` - OpenAI API client for GPT-4V
+    - `playwright==1.39.0` - Browser automation framework
+    - `Pillow==10.1.0` - Image processing for screenshots
+    - `python-dotenv==1.0.0` - Environment variable management
+    - `whisper-mic` - Voice input support (optional)
+    
+    <Info>
+    After installing Playwright, you need to install browser binaries:
+    ```bash
+    playwright install chromium
+    ```
+    </Info>
+  </Step>
+  
+  <Step title="Download Vimium extension">
+    vimGPT requires the Vimium Chrome extension to be loaded locally. Run the provided setup script:
+    
+    ```bash
+    ./setup.sh
+    ```
+    
+    Or manually execute these commands:
+    
+    ```bash
+    curl -o vimium-master.zip -L https://github.com/philc/vimium/archive/refs/heads/master.zip
+    unzip vimium-master.zip
+    rm vimium-master.zip
+    ```
+    
+    This downloads Vimium to `./vimium-master/`, which vimGPT loads when launching the browser.
+  </Step>
+  
+  <Step title="Configure OpenAI API key">
+    Create a `.env` file in the project root:
+    
+    ```bash
+    touch .env
+    ```
+    
+    Add your OpenAI API key:
+    
+    ```bash .env
+    OPENAI_API_KEY=sk-your-api-key-here
+    ```
+    
+    <Warning>
+    Keep your API key secure! Never commit the `.env` file to version control. The repository includes `.env` in `.gitignore` by default.
+    </Warning>
+    
+    The API key is loaded in vision.py:
+    ```python
+    from dotenv import load_dotenv
+    import openai
+    
+    load_dotenv()
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    Test that everything is working:
+    
+    ```bash
+    python main.py
+    ```
+    
+    You should see:
+    ```
+    Initializing the Vimbot driver...
+    Navigating to Google...
+    Please enter your objective:
+    ```
+    
+    If this appears, your installation is complete!
+  </Step>
+</Steps>
+
+## Detailed dependency breakdown
+
+### Core dependencies
+
+Here's what each major dependency does in vimGPT:
+
+<CodeGroup>
+
+```txt requirements.txt
+annotated-types==0.6.0
+anyio==3.7.1
+certifi==2023.7.22
+distro==1.8.0
+exceptiongroup==1.1.3
+greenlet==3.0.0
+h11==0.14.0
+httpcore==1.0.1
+httpx==0.25.1
+idna==3.4
+instructor
+openai==1.1.2
+Pillow==10.1.0
+playwright==1.39.0
+pydantic==2.4.2
+pydantic_core==2.10.1
+pyee==11.0.1
+python-dotenv==1.0.0
+sniffio==1.3.0
+whisper-mic
+tqdm==4.66.1
+typing_extensions==4.8.0
+```
+
+</CodeGroup>
+
+**Key packages:**
+
+- **openai**: Communicates with GPT-4 with Vision API to analyze screenshots
+- **playwright**: Automates Chromium browser with Vimium extension loaded
+- **Pillow**: Processes and resizes screenshots before sending to GPT-4V
+- **python-dotenv**: Loads OpenAI API key from `.env` file
+- **whisper-mic**: Enables voice input mode (optional)
+
+### Browser automation (vimbot.py)
+
+The Vimbot class initializes Playwright with Vimium:
+
+```python
+class Vimbot:
+    def __init__(self, headless=False):
+        self.context = (
+            sync_playwright()
+            .start()
+            .chromium.launch_persistent_context(
+                "",
+                headless=headless,
+                args=[
+                    f"--disable-extensions-except={vimium_path}",
+                    f"--load-extension={vimium_path}",
+                ],
+                ignore_https_errors=True,
+            )
+        )
+        
+        self.page = self.context.new_page()
+        self.page.set_viewport_size({"width": 1080, "height": 720})
+```
+
+The viewport size (1080x720) is optimized for GPT-4V's image processing.
+
+### Vision processing (vision.py)
+
+Screenshots are resized before being sent to the API:
+
+```python
+IMG_RES = 1080
+
+def encode_and_resize(image):
+    W, H = image.size
+    image = image.resize((IMG_RES, int(IMG_RES * H / W)))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return encoded_image
+```
+
+<Tip>
+Higher resolution images may improve accuracy but consume more tokens. The default 1080px width balances quality and cost.
+</Tip>
+
+## Configuration options
+
+### Headless mode
+
+By default, vimGPT opens a visible browser window. To run in headless mode, modify the Vimbot initialization:
+
+```python
+driver = Vimbot(headless=True)
+```
+
+### Viewport dimensions
+
+Adjust browser size in vimbot.py:27:
+
+```python
+self.page.set_viewport_size({"width": 1920, "height": 1080})
+```
+
+<Warning>
+Changing viewport size affects image dimensions sent to GPT-4V. Larger viewports increase token usage.
+</Warning>
+
+### Image resolution
+
+Modify the resolution constant in vision.py:12:
+
+```python
+IMG_RES = 1920  # Increase for higher quality
+```
+
+### Model selection
+
+The default model is `gpt-4o` (vision.py:28). You can change this to other vision-capable models:
+
+```python
+response = openai.chat.completions.create(
+    model="gpt-4-vision-preview",  # or other vision models
+    messages=[...]
+)
+```
+
+## Voice mode setup
+
+To use voice input, ensure the `whisper-mic` package is installed and your microphone is accessible:
+
+<Steps>
+  <Step title="Verify whisper-mic installation">
+    ```bash
+    pip list | grep whisper-mic
+    ```
+  </Step>
+  
+  <Step title="Test microphone access">
+    Run a quick test:
+    ```python
+    from whisper_mic import WhisperMic
+    mic = WhisperMic()
+    result = mic.listen()
+    print(result)
+    ```
+  </Step>
+  
+  <Step title="Run with voice mode">
+    ```bash
+    python main.py --voice
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="playwright install fails">
+    If Playwright browser installation fails:
+    
+    ```bash
+    # Install system dependencies (Ubuntu/Debian)
+    sudo apt-get install libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2
+    
+    # Then retry
+    playwright install chromium
+    ```
+  </Accordion>
+  
+  <Accordion title="Vimium not loading in browser">
+    Ensure the extension was downloaded correctly:
+    
+    ```bash
+    ls -la vimium-master/
+    ```
+    
+    You should see files like `background.js`, `manifest.json`, etc. If the directory is empty, re-run:
+    
+    ```bash
+    ./setup.sh
+    ```
+  </Accordion>
+  
+  <Accordion title="OpenAI API authentication fails">
+    Verify your API key is correctly set:
+    
+    ```python
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    print(os.getenv("OPENAI_API_KEY"))
+    ```
+    
+    If this prints `None`, check:
+    - `.env` file exists in project root
+    - File contains `OPENAI_API_KEY=sk-...`
+    - No extra spaces or quotes around the key
+  </Accordion>
+  
+  <Accordion title="Voice mode not working">
+    Common voice mode issues:
+    
+    **Microphone not detected:**
+    ```bash
+    # Test microphone access
+    python -c "import sounddevice; print(sounddevice.query_devices())"
+    ```
+    
+    **Whisper model download fails:**
+    Whisper models are downloaded on first use. Ensure you have:
+    - Internet connectivity
+    - Sufficient disk space (~1GB for base model)
+    - Write permissions in cache directory
+  </Accordion>
+  
+  <Accordion title="Module import errors">
+    If you see `ModuleNotFoundError`, ensure all dependencies installed:
+    
+    ```bash
+    pip install -r requirements.txt --force-reinstall
+    ```
+    
+    For development, use a virtual environment:
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    pip install -r requirements.txt
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## API costs and usage
+
+<Warning>
+GPT-4 with Vision is significantly more expensive than text-only models. Each screenshot sent to the API consumes tokens based on image size.
+</Warning>
+
+Typical costs per browsing task:
+
+- **Simple task** (3-5 actions): $0.05 - $0.15
+- **Medium task** (10-15 actions): $0.20 - $0.40
+- **Complex task** (20+ actions): $0.50+
+
+Monitor your usage at https://platform.openai.com/usage
+
+<Tip>
+To reduce costs:
+- Lower `IMG_RES` in vision.py (default: 1080)
+- Use more specific objectives to reduce action count
+- Test with simple tasks first
+- Set `max_tokens=100` (already configured in vision.py:46)
+</Tip>
+
+## Environment variables reference
+
+All available environment variables:
+
+```bash .env
+# Required
+OPENAI_API_KEY=sk-your-api-key-here
+
+# Optional - uncomment to use
+# OPENAI_ORG_ID=org-your-org-id
+# OPENAI_API_BASE=https://api.openai.com/v1
+```
+
+## Next steps
+
+Now that vimGPT is installed:
+
+1. Complete the [quickstart guide](/quickstart) to run your first task
+2. Experiment with different objectives and complexity levels
+3. Monitor your API usage and costs
+4. Try voice mode for hands-free browsing
+
+<Info>
+For issues or questions, visit the [GitHub repository](https://github.com/ishan0102/vimGPT) or check existing issues and discussions.
+</Info>

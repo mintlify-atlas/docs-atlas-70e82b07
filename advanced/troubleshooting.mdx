@@ -1,0 +1,338 @@
+---
+title: Troubleshooting
+description: Common issues and debugging solutions for vimGPT
+---
+
+## Common issues
+
+<AccordionGroup>
+  <Accordion title="API key not found or authentication errors">
+    vimGPT requires an OpenAI API key to function. The error typically appears as:
+    
+    ```
+    openai.AuthenticationError: No API key provided
+    ```
+    
+    **Solution**:
+    
+    1. Create a `.env` file in the project root directory
+    2. Add your OpenAI API key:
+       ```bash
+       OPENAI_API_KEY=sk-...
+       ```
+    3. Ensure the `.env` file is in the same directory where you run `main.py`
+    4. Verify the key is valid by checking your [OpenAI dashboard](https://platform.openai.com/api-keys)
+    
+    The `vision.py:11` module uses `python-dotenv` to automatically load environment variables from the `.env` file.
+  </Accordion>
+
+  <Accordion title="Vimium extension not loading">
+    If you see errors about missing Vimium or the browser launches without yellow hint markers:
+    
+    ```
+    Error: Extension directory not found: ./vimium-master
+    ```
+    
+    **Solution**:
+    
+    1. Run the setup script to download Vimium:
+       ```bash
+       ./setup.sh
+       ```
+    
+    2. Verify the `vimium-master` directory exists in your project root:
+       ```bash
+       ls -la vimium-master/
+       ```
+    
+    3. If the directory exists but errors persist, check Playwright permissions:
+       ```bash
+       chmod +x setup.sh
+       ./setup.sh
+       ```
+    
+    4. Manual installation alternative:
+       ```bash
+       curl -o vimium-master.zip -L https://github.com/philc/vimium/archive/refs/heads/master.zip
+       unzip vimium-master.zip
+       rm vimium-master.zip
+       ```
+    
+    The extension path is defined in `vimbot.py:7` and must match the downloaded directory name.
+  </Accordion>
+
+  <Accordion title="GPT-4V not detecting elements / returning empty actions">
+    The model fails to identify clickable elements and returns `{}` or incorrect actions.
+    
+    **Common causes**:
+    
+    - Image resolution too low for element detection
+    - Vimium hints not visible in screenshot
+    - Page not fully loaded before capture
+    
+    **Solutions**:
+    
+    1. **Increase image resolution** (edit `vision.py:12`):
+       ```python
+       IMG_RES = 1920  # Default is 1080
+       ```
+       Note: Higher resolution increases token usage and API costs.
+    
+    2. **Add delay before capture** (edit `main.py:31`):
+       ```python
+       time.sleep(2)  # Wait longer for page load
+       screenshot = driver.capture()
+       ```
+    
+    3. **Verify Vimium activation** by checking that yellow hints appear:
+       - Set `headless=False` in `vimbot.py:11` to see the browser
+       - Manually press `f` to confirm Vimium works
+    
+    4. **Check screenshot quality** by saving captures:
+       ```python
+       # Add to main.py after line 32
+       screenshot.save(f"debug_{time.time()}.png")
+       ```
+  </Accordion>
+
+  <Accordion title="Invalid JSON response errors">
+    GPT-4V returns text that cannot be parsed as JSON:
+    
+    ```
+    Error: Invalid JSON response
+    ```
+    
+    **How it's handled**:
+    
+    vimGPT includes automatic JSON repair (`vision.py:52`). When the first parse fails:
+    
+    1. The malformed response is sent to GPT-4o for cleaning
+    2. A second parse attempt is made
+    3. If both fail, an empty dict `{}` is returned
+    
+    **Manual debugging**:
+    
+    1. Check the printed JSON response in your terminal
+    2. Common issues:
+       - Response wrapped in markdown code blocks: `` ```json {...} ``` ``
+       - Extra explanatory text before/after JSON
+       - Missing quotes around keys or values
+    
+    3. If auto-repair consistently fails, modify the prompt in `vision.py:35` to be more explicit:
+       ```python
+       "text": f"...You must respond ONLY with valid JSON. No markdown, no explanations, just pure JSON..."
+       ```
+  </Accordion>
+
+  <Accordion title="Playwright installation issues">
+    Errors during `pip install` or when running the script:
+    
+    ```
+    playwright._impl._api_types.Error: Executable doesn't exist
+    ```
+    
+    **Solution**:
+    
+    1. Install Python dependencies:
+       ```bash
+       pip install -r requirements.txt
+       ```
+    
+    2. Install Playwright browsers:
+       ```bash
+       playwright install chromium
+       ```
+    
+    3. If you encounter permission errors:
+       ```bash
+       playwright install --with-deps chromium
+       ```
+    
+    4. For system-specific issues, check [Playwright documentation](https://playwright.dev/python/docs/intro)
+  </Accordion>
+
+  <Accordion title="Voice mode not working">
+    When using `--voice` flag, errors occur during audio capture:
+    
+    ```
+    Error in capturing voice input: [Errno 2] No such file or directory: 'ffmpeg'
+    ```
+    
+    **Solution**:
+    
+    1. Install system audio dependencies:
+       
+       **macOS**:
+       ```bash
+       brew install portaudio ffmpeg
+       ```
+       
+       **Ubuntu/Debian**:
+       ```bash
+       sudo apt-get install portaudio19-dev ffmpeg
+       ```
+       
+       **Windows**:
+       - Download ffmpeg from [ffmpeg.org](https://ffmpeg.org/download.html)
+       - Add to system PATH
+    
+    2. Verify microphone permissions in system settings
+    
+    3. Test whisper-mic independently:
+       ```python
+       from whisper_mic import WhisperMic
+       mic = WhisperMic()
+       result = mic.listen()
+       print(result)
+       ```
+    
+    The voice input handling is in `main.py:17` with basic error catching.
+  </Accordion>
+
+  <Accordion title="Bot clicking wrong elements or getting stuck">
+    The agent repeatedly clicks the same element or selects incorrect targets.
+    
+    **Debugging steps**:
+    
+    1. **Check the objective clarity**:
+       - Vague: "Find something interesting"
+       - Better: "Search for Python tutorials on Google"
+    
+    2. **Monitor the JSON responses** printed to console (`main.py:36`):
+       ```
+       JSON Response: {"click": "ab", "type": "python tutorials"}
+       ```
+    
+    3. **Verify Vimium hint visibility**:
+       - Run with visible browser: set `headless=False` in `vimbot.py:11`
+       - Check if hints are obscured by page elements
+    
+    4. **Increase wait time between actions** (`main.py:30`):
+       ```python
+       time.sleep(3)  # Give page more time to update
+       ```
+    
+    5. **Current limitation**: No cycle detection exists (see Architecture page). The bot may loop if:
+       - Clicked element doesn't change page state
+       - Navigation leads back to previous page
+       
+       Future versions may implement graph-based retry mechanisms (see `README.md:48`).
+  </Accordion>
+
+  <Accordion title="Timeout errors during navigation">
+    Page navigation fails with:
+    
+    ```
+    playwright._impl._api_types.TimeoutError: Timeout 60000ms exceeded
+    ```
+    
+    **Solution**:
+    
+    1. The default timeout is 60 seconds (`vimbot.py:43`)
+    
+    2. Increase timeout for slow-loading pages:
+       ```python
+       def navigate(self, url):
+           self.page.goto(
+               url=url if "://" in url else "https://" + url,
+               timeout=120000  # 2 minutes
+           )
+       ```
+    
+    3. For pages that never finish loading (streaming content):
+       ```python
+       self.page.goto(url, wait_until="domcontentloaded")
+       ```
+    
+    4. Check if HTTPS errors are blocking (`vimbot.py:22` already sets `ignore_https_errors=True`)
+  </Accordion>
+
+  <Accordion title="High API costs / token usage">
+    Running vimGPT consumes more tokens than expected.
+    
+    **Optimization strategies**:
+    
+    1. **Reduce image resolution** (`vision.py:12`):
+       ```python
+       IMG_RES = 720  # Lower resolution = fewer tokens
+       ```
+       Trade-off: May reduce element detection accuracy.
+    
+    2. **Limit max tokens per response** (`vision.py:46`):
+       ```python
+       max_tokens=50  # Reduced from 100
+       ```
+    
+    3. **Monitor usage** in OpenAI dashboard:
+       - Check token consumption per request
+       - Set billing alerts
+    
+    4. **Add task completion limits**:
+       ```python
+       # In main.py
+       max_iterations = 20
+       for i in range(max_iterations):
+           # existing loop code
+       ```
+    
+    5. **Future improvement**: Use cheaper models for JSON cleanup instead of GPT-4o (`vision.py:54`)
+  </Accordion>
+</AccordionGroup>
+
+## Debugging tips
+
+### Enable verbose logging
+
+Add debug prints to track execution flow:
+
+```python
+# In vision.py after line 50
+print(f"Raw GPT-4V response: {response.choices[0].message.content}")
+
+# In vimbot.py after line 29
+print(f"Performing action: {action}")
+```
+
+### Save screenshots for inspection
+
+Capture what the model sees:
+
+```python
+# In main.py after line 32
+import datetime
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+screenshot.save(f"screenshots/{timestamp}.png")
+```
+
+### Test with headful browser
+
+Watch the automation in real-time:
+
+```python
+# In main.py line 12
+driver = Vimbot(headless=False)
+```
+
+### Validate JSON responses
+
+Add schema validation:
+
+```python
+# In vision.py after line 50
+valid_keys = {"navigate", "type", "click", "done"}
+if not any(key in json_response for key in valid_keys):
+    print(f"Warning: Unexpected JSON keys: {json_response.keys()}")
+```
+
+## Getting help
+
+If issues persist:
+
+1. Check existing [GitHub issues](https://github.com/ishan0102/vimGPT/issues)
+2. Search [HackerNews discussion](https://news.ycombinator.com/item?id=38200308)
+3. Review the [source code](https://github.com/ishan0102/vimGPT) for recent updates
+4. Open a new issue with:
+   - Full error message
+   - Steps to reproduce
+   - Python version and OS
+   - Screenshot samples (if relevant)

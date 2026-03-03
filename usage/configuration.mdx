@@ -1,0 +1,355 @@
+---
+title: Configuration
+description: Environment variables, browser settings, and customization options for vimGPT
+---
+
+vimGPT can be configured through environment variables and code-level settings to customize its behavior for your specific needs.
+
+## Environment variables
+
+### OPENAI_API_KEY
+
+**Required**: Yes
+
+Your OpenAI API key for accessing GPT-4V:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+vimGPT loads environment variables using `python-dotenv` (vision.py:10), so you can also create a `.env` file:
+
+```bash title=".env"
+OPENAI_API_KEY=sk-...
+```
+
+<Warning>
+Never commit your `.env` file to version control. Add it to `.gitignore` to prevent accidental exposure of your API key.
+</Warning>
+
+The API key is set in the vision module:
+
+```python
+from dotenv import load_dotenv
+import os
+import openai
+
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
+```
+
+Reference: vision.py:10-11
+
+## Browser configuration
+
+### Viewport size
+
+The browser viewport is configured in the Vimbot class initialization:
+
+```python
+self.page.set_viewport_size({"width": 1080, "height": 720})
+```
+
+Reference: vimbot.py:27
+
+**Default**: 1080x720 pixels
+
+To customize, modify the viewport dimensions in `vimbot.py`:
+
+```python
+self.page.set_viewport_size({"width": 1920, "height": 1080})
+```
+
+<Note>
+Larger viewports may improve element detection but increase token usage and API costs.
+</Note>
+
+### Headless mode
+
+vimGPT runs in headed mode by default (browser window visible):
+
+```python
+class Vimbot:
+    def __init__(self, headless=False):
+        self.context = (
+            sync_playwright()
+            .start()
+            .chromium.launch_persistent_context(
+                "",
+                headless=headless,
+                args=[
+                    f"--disable-extensions-except={vimium_path}",
+                    f"--load-extension={vimium_path}",
+                ],
+                ignore_https_errors=True,
+            )
+        )
+```
+
+Reference: vimbot.py:11-24
+
+**Default**: `headless=False` (browser visible)
+
+To run in headless mode, modify the initialization in `main.py`:
+
+```python
+driver = Vimbot(headless=True)
+```
+
+### Browser extensions
+
+vimGPT loads the Vimium extension from the local directory:
+
+```python
+vimium_path = "./vimium-master"
+```
+
+Reference: vimbot.py:7
+
+The extension is downloaded by the setup script:
+
+```bash
+./setup.sh
+```
+
+This script:
+1. Downloads Vimium from GitHub (setup.sh:1)
+2. Extracts the archive (setup.sh:2)
+3. Cleans up the zip file (setup.sh:3)
+
+### Navigation timeout
+
+Page navigation has a 60-second timeout:
+
+```python
+def navigate(self, url):
+    self.page.goto(url=url if "://" in url else "https://" + url, timeout=60000)
+```
+
+Reference: vimbot.py:42-43
+
+**Default**: 60000 milliseconds (60 seconds)
+
+To adjust, modify the `timeout` parameter in `vimbot.py`.
+
+### HTTPS error handling
+
+HTTPS errors are ignored by default:
+
+```python
+ignore_https_errors=True
+```
+
+Reference: vimbot.py:22
+
+This allows vimGPT to navigate to sites with self-signed or expired certificates.
+
+## Image processing
+
+### Image resolution
+
+Screenshots are resized to optimize token usage:
+
+```python
+IMG_RES = 1080
+
+def encode_and_resize(image):
+    W, H = image.size
+    image = image.resize((IMG_RES, int(IMG_RES * H / W)))
+    # ...
+```
+
+Reference: vision.py:12, vision.py:16-18
+
+**Default**: 1080 pixels wide (maintains aspect ratio)
+
+To use higher resolution images, modify `IMG_RES` in `vision.py`:
+
+```python
+IMG_RES = 1920  # Higher resolution for better detail
+```
+
+<Tip>
+Higher resolution improves element detection but significantly increases API token usage and costs.
+</Tip>
+
+### Image format
+
+Screenshots are captured and encoded as PNG:
+
+```python
+screenshot = Image.open(BytesIO(self.page.screenshot())).convert("RGB")
+```
+
+Reference: vimbot.py:58
+
+The image is then base64-encoded for the API:
+
+```python
+buffer = BytesIO()
+image.save(buffer, format="PNG")
+encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+```
+
+Reference: vision.py:19-21
+
+## GPT-4V configuration
+
+### Model selection
+
+The current model is GPT-4V (gpt-4o):
+
+```python
+response = openai.chat.completions.create(
+    model="gpt-4o",
+    # ...
+)
+```
+
+Reference: vision.py:28
+
+To use a different model, change the `model` parameter in `vision.py`.
+
+### Token limits
+
+The API call limits the response to 100 tokens:
+
+```python
+max_tokens=100
+```
+
+Reference: vision.py:46
+
+This is sufficient for JSON action responses. Increase if you need more detailed outputs.
+
+### Action timing
+
+vimGPT pauses between actions to allow pages to load:
+
+```python
+while True:
+    time.sleep(1)
+    print("Capturing the screen...")
+    screenshot = driver.capture()
+```
+
+Reference: main.py:30
+
+**Default**: 1 second between actions
+
+Additionally, typing actions include a 1-second wait:
+
+```python
+def type(self, text):
+    time.sleep(1)
+    self.page.keyboard.type(text)
+    self.page.keyboard.press("Enter")
+```
+
+Reference: vimbot.py:45-48
+
+## Vimium configuration
+
+### Link hint activation
+
+Screenshots are captured with Vimium link hints visible:
+
+```python
+def capture(self):
+    # capture a screenshot with vim bindings on the screen
+    self.page.keyboard.press("Escape")
+    self.page.keyboard.type("f")
+    
+    screenshot = Image.open(BytesIO(self.page.screenshot())).convert("RGB")
+    return screenshot
+```
+
+Reference: vimbot.py:53-59
+
+The `f` key activates Vimium's link hint mode, overlaying yellow character sequences on all clickable elements.
+
+## Error handling
+
+### JSON parsing errors
+
+If GPT-4V returns invalid JSON, vimGPT attempts automatic correction:
+
+```python
+try:
+    json_response = json.loads(response.choices[0].message.content)
+except json.JSONDecodeError:
+    print("Error: Invalid JSON response")
+    cleaned_response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a helpful assistant to fix an invalid JSON response...",
+            },
+            # ...
+        ],
+    )
+```
+
+Reference: vision.py:49-66
+
+This makes an additional API call to fix malformed JSON responses.
+
+### Voice input errors
+
+Voice mode exits gracefully if capture fails:
+
+```python
+try:
+    objective = mic.listen()
+except Exception as e:
+    print(f"Error in capturing voice input: {e}")
+    return  # Exit if voice input fails
+```
+
+Reference: main.py:21-24
+
+## Dependencies
+
+vimGPT requires these key packages:
+
+```txt title="requirements.txt"
+openai==1.1.2
+playwright==1.39.0
+Pillow==10.1.0
+python-dotenv==1.0.0
+whisper-mic
+```
+
+Reference: requirements.txt
+
+Install all dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+<Note>
+Playwright requires additional browser binaries. Install them with:
+
+```bash
+playwright install chromium
+```
+</Note>
+
+## Summary
+
+Key configuration options:
+
+| Setting | Default | Location |
+|---------|---------|----------|
+| API Key | Required | Environment variable |
+| Viewport size | 1080x720 | vimbot.py:27 |
+| Image resolution | 1080px | vision.py:12 |
+| Headless mode | False | vimbot.py:11 |
+| Action delay | 1 second | main.py:30 |
+| Navigation timeout | 60 seconds | vimbot.py:43 |
+| Max tokens | 100 | vision.py:46 |
+| Model | gpt-4o | vision.py:28 |
+
+All code-level customizations require modifying the source files and restarting vimGPT.

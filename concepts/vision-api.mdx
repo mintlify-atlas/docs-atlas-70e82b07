@@ -1,0 +1,323 @@
+---
+title: Vision API
+description: How vimGPT uses GPT-4V to analyze screenshots and make browsing decisions
+---
+
+## Overview
+
+The `vision.py` module handles all interactions with OpenAI's GPT-4V (Vision) API. It encodes screenshots, constructs prompts, parses JSON responses, and implements fallback error handling for malformed outputs.
+
+## Image preparation
+
+### Encoding and resizing
+
+Screenshots must be base64-encoded before sending to the API. vimGPT also resizes images to control token usage:
+
+```python vision.py
+IMG_RES = 1080
+
+def encode_and_resize(image):
+    W, H = image.size
+    image = image.resize((IMG_RES, int(IMG_RES * H / W)))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return encoded_image
+```
+
+<Steps>
+  <Step title="Calculate aspect ratio">
+    Maintain the original aspect ratio while resizing to 1080px width
+  </Step>
+  
+  <Step title="Resize image">
+    Use PIL to resize the screenshot, balancing clarity with token efficiency
+  </Step>
+  
+  <Step title="Encode to base64">
+    Convert the PNG image to a base64 string for API transmission
+  </Step>
+</Steps>
+
+<Info>
+**Why 1080px?** This resolution provides enough detail for GPT-4V to read Vimium hint characters while keeping token costs manageable. Lower resolutions cause detection failures.
+</Info>
+
+## Prompt engineering
+
+The core of vimGPT's intelligence comes from a carefully crafted prompt that instructs GPT-4V on:
+
+- Available actions (navigate, type, click, done)
+- How to format responses (JSON only)
+- How to interpret Vimium overlays (yellow character sequences)
+- When to signal completion
+
+### The full prompt
+
+```python vision.py
+response = openai.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"You need to choose which action to take to help a user do this task: {objective}. Your options are navigate, type, click, and done. Navigate should take you to the specified URL. Type and click take strings where if you want to click on an object, return the string with the yellow character sequence you want to click on, and to type just a string with the message you want to type. For clicks, please only respond with the 1-2 letter sequence in the yellow box, and if there are multiple valid options choose the one you think a user would select. For typing, please return a click to click on the box along with a type with the message to write. When the page seems satisfactory, return done as a key with no value. You must respond in JSON only with no other fluff or bad things will happen. The JSON keys must ONLY be one of navigate, type, or click. Do not return the JSON inside a code block.",
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{encoded_screenshot}",
+                    },
+                },
+            ],
+        }
+    ],
+    max_tokens=100,
+)
+```
+
+### Prompt breakdown
+
+<AccordionGroup>
+  <Accordion title="Task context">
+    `"You need to choose which action to take to help a user do this task: {objective}"`
+    
+    Grounds the model in the user's goal (e.g., "search for machine learning papers")
+  </Accordion>
+  
+  <Accordion title="Action definitions">
+    - **navigate**: Go to a URL
+    - **type**: Enter text and press Enter
+    - **click**: Type the Vimium hint characters
+    - **done**: Task complete
+  </Accordion>
+  
+  <Accordion title="Vimium instructions">
+    `"return the string with the yellow character sequence you want to click on"`
+    
+    Teaches the model to read Vimium overlays and return hint characters like "AB" or "F"
+  </Accordion>
+  
+  <Accordion title="Format enforcement">
+    `"You must respond in JSON only with no other fluff or bad things will happen. Do not return the JSON inside a code block."`
+    
+    Attempts to force pure JSON output (though this doesn't always work)
+  </Accordion>
+  
+  <Accordion title="Combined actions">
+    `"For typing, please return a click to click on the box along with a type with the message to write"`
+    
+    Handles cases where the model needs to click an input field before typing
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+**JSON mode unavailable**: At the time of development, GPT-4V didn't support JSON mode or function calling, requiring prompt-based enforcement.
+</Note>
+
+## API configuration
+
+```python vision.py
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
+```
+
+The OpenAI API key is loaded from a `.env` file for security.
+
+### Token limits
+
+```python vision.py
+max_tokens=100
+```
+
+Since responses are just JSON objects like `{"click": "AB"}`, 100 tokens is sufficient.
+
+## Response parsing
+
+### Handling valid JSON
+
+```python vision.py
+try:
+    json_response = json.loads(response.choices[0].message.content)
+except json.JSONDecodeError:
+    print("Error: Invalid JSON response")
+    # Fallback mechanism...
+return json_response
+```
+
+If the response is valid JSON, it's parsed and returned immediately.
+
+### Example valid responses
+
+```json
+{"navigate": "https://arxiv.org"}
+```
+
+```json
+{"click": "F", "type": "quantum computing"}
+```
+
+```json
+{"done": null}
+```
+
+## Error handling and repair
+
+Despite prompt engineering, GPT-4V sometimes returns malformed JSON (e.g., wrapped in code blocks, containing comments, etc.). vimGPT implements a fallback repair mechanism:
+
+```python vision.py
+except json.JSONDecodeError:
+    print("Error: Invalid JSON response")
+    cleaned_response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a helpful assistant to fix an invalid JSON response. You need to fix the invalid JSON response to be valid JSON. You must respond in JSON only with no other fluff or bad things will happen. Do not return the JSON inside a code block.",
+            },
+            {
+                "role": "user",
+                "content": f"The invalid JSON response is: {response.choices[0].message.content}",
+            },
+        ],
+    )
+    try:
+        cleaned_json_response = json.loads(
+            cleaned_response.choices[0].message.content
+        )
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON response")
+        return {}
+    return cleaned_json_response
+```
+
+<Steps>
+  <Step title="Detect parsing error">
+    Catch `json.JSONDecodeError` when the response isn't valid JSON
+  </Step>
+  
+  <Step title="Make repair API call">
+    Send the malformed response to GPT-4 with instructions to fix it
+  </Step>
+  
+  <Step title="Parse repaired response">
+    Attempt to parse the cleaned response
+  </Step>
+  
+  <Step title="Fallback to empty object">
+    If repair fails, return `{}` to avoid crashing
+  </Step>
+</Steps>
+
+<Warning>
+**Double API cost**: This fallback mechanism doubles the API calls for failed parses, increasing latency and cost.
+</Warning>
+
+## Common response patterns
+
+Based on the prompt and Vimium integration, GPT-4V typically returns:
+
+<CardGroup cols={2}>
+  <Card title="Simple click" icon="mouse-pointer">
+    ```json
+    {"click": "AB"}
+    ```
+    Click the element with hint "AB"
+  </Card>
+  
+  <Card title="Search query" icon="magnifying-glass">
+    ```json
+    {"click": "F", "type": "machine learning"}
+    ```
+    Click search box, type query
+  </Card>
+  
+  <Card title="Navigation" icon="compass">
+    ```json
+    {"navigate": "https://arxiv.org"}
+    ```
+    Go directly to a URL
+  </Card>
+  
+  <Card title="Completion" icon="circle-check">
+    ```json
+    {"done": null}
+    ```
+    Task accomplished
+  </Card>
+</CardGroup>
+
+## Testing the vision module
+
+The module includes a standalone test:
+
+```python vision.py
+if __name__ == "__main__":
+    image = Image.open("image.png")
+    actions = get_actions(image, "upvote the pinterest post")
+```
+
+You can test the vision API independently by providing a screenshot and objective.
+
+## Performance considerations
+
+### Latency
+
+- **Encoding**: ~10-50ms for image processing
+- **API call**: ~2-5 seconds for GPT-4V inference
+- **Repair call**: Additional 1-3 seconds if JSON parsing fails
+
+### Token usage
+
+Vision API tokens are calculated based on:
+- Image resolution (higher = more tokens)
+- Prompt length
+- Response length (minimal due to `max_tokens=100`)
+
+A 1080×720 screenshot typically uses **~500-1000 tokens** for the image alone.
+
+### Cost estimation
+
+With GPT-4V pricing:
+- Input: ~$0.01 per image + prompt
+- Output: ~$0.03 per 1K tokens (minimal due to short responses)
+- **~$0.01-0.02 per action** depending on image size
+
+<Info>
+Completing a multi-step task (5-10 actions) costs approximately $0.05-0.20 in API fees.
+</Info>
+
+## Limitations and future work
+
+### Current limitations
+
+<Warning>**No JSON mode**: Must rely on prompt engineering, leading to parsing failures</Warning>
+<Warning>**No function calling**: Can't formally define the action schema</Warning>
+<Warning>**Token-heavy**: Vision tokens are expensive compared to text-only models</Warning>
+<Warning>**Single-frame reasoning**: No memory of previous actions or screenshots</Warning>
+
+### Potential improvements
+
+From the GitHub README:
+
+- **Use Assistant API**: Once it supports vision, maintain conversation history for context
+- **Fine-tune open-source models**: Use LLaVa, CogVLM, or Fuyu-8B for faster/cheaper inference
+- **Higher resolution**: Better element detection, but requires more tokens
+- **Hybrid approach**: Have GPT-4V return natural language instructions, then use JSON mode GPT-4 to formalize them
+- **Add accessibility tree**: Provide DOM structure alongside screenshots for additional context
+- **Visual question answering**: Return information to the user instead of just executing actions
+
+## Dependencies
+
+```txt requirements.txt
+openai==1.1.2
+Pillow==10.1.0
+python-dotenv==1.0.0
+```
+
+The vision module requires:
+- **openai**: Official OpenAI Python client
+- **Pillow**: Image processing and encoding
+- **python-dotenv**: Environment variable management
