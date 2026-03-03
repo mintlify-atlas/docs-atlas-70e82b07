@@ -1,0 +1,71 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "vimGPT",
+  "projectDescription": "Browse the web autonomously using GPT-4V and Vimium keyboard navigation",
+  "theme": "palm",
+  "primaryColor": "#FF6B35",
+  "lightColor": "#FFB84D",
+  "darkColor": "#CC5429",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "installation"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/how-it-works",
+          "concepts/vimium-integration",
+          "concepts/vision-api"
+        ]
+      },
+      {
+        "group": "Usage",
+        "pages": [
+          "usage/basic-usage",
+          "usage/voice-mode",
+          "usage/configuration"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/vimbot",
+          "api/vision",
+          "api/actions"
+        ]
+      },
+      {
+        "group": "Advanced",
+        "pages": [
+          "advanced/architecture",
+          "advanced/troubleshooting",
+          "advanced/contributing"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "GPT-4V vision-based web browsing",
+    "Vimium keyboard navigation integration",
+    "Voice command support with Whisper",
+    "Autonomous web task execution",
+    "Screenshot-based action planning"
+  ],
+  "publicApiSurface": [
+    "Vimbot",
+    "Vimbot.navigate(url)",
+    "Vimbot.click(text)",
+    "Vimbot.type(text)",
+    "Vimbot.capture()",
+    "Vimbot.perform_action(action)",
+    "vision.get_actions(screenshot, objective)",
+    "vision.encode_and_resize(image)",
+    "main(voice_mode)"
+  ]
+}
